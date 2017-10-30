@@ -89,10 +89,6 @@ end zpu_core;
 
 
 architecture behave of zpu_core is
-
-
-
-
   type InsnType is (
     Insn_AddTop,
     Insn_Dup,
