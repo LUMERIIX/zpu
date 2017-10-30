@@ -2,20 +2,20 @@
 --
 -- Copyright 2004-2008 oharboe - Øyvind Harboe - oyvind.harboe@zylin.com
 -- Copyright 2008 alvieboy - Álvaro Lopes - alvieboy@alvie.com
--- 
+--
 -- The FreeBSD license
--- 
+--
 -- Redistribution and use in source and binary forms, with or without
 -- modification, are permitted provided that the following conditions
 -- are met:
--- 
+--
 -- 1. Redistributions of source code must retain the above copyright
 --    notice, this list of conditions and the following disclaimer.
 -- 2. Redistributions in binary form must reproduce the above
 --    copyright notice, this list of conditions and the following
 --    disclaimer in the documentation and/or other materials
 --    provided with the distribution.
--- 
+--
 -- THIS SOFTWARE IS PROVIDED BY THE ZPU PROJECT ``AS IS'' AND ANY
 -- EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
 -- THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
@@ -28,7 +28,7 @@
 -- STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 -- ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 -- ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
--- 
+--
 -- The views and conclusions contained in the software and documentation
 -- are those of the authors and should not be interpreted as representing
 -- official policies, either expressed or implied, of the ZPU Project.
@@ -38,49 +38,60 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 library work;
-use work.zpu_config.all;
+--use work.zpu_config.all;
 use work.zpupkg.all;
 
 
--- mem_writeEnable - set to '1' for a single cycle to send off a write request.
---                   mem_write is valid only while mem_writeEnable='1'.
--- mem_readEnable - set to '1' for a single cycle to send off a read request.
--- 
+-- mem_write_enable - set to '1' for a single cycle to send off a write request.
+--                   mem_write is valid only while mem_write_enable='1'.
+-- mem_read_enable - set to '1' for a single cycle to send off a read request.
+--
 -- mem_busy - It is illegal to send off a read/write request when mem_busy='1'.
 --            Set to '0' when mem_read  is valid after a read request.
---            If it goes to '1'(busy), it is on the cycle after mem_read/writeEnable
+--            If it goes to '1'(busy), it is on the cycle after mem_read/write_enable
 --            is '1'.
 -- mem_addr - address for read/write request
--- mem_read - read data. Valid only on the cycle after mem_busy='0' after 
---            mem_readEnable='1' for a single cycle.
+-- mem_read - read data. Valid only on the cycle after mem_busy='0' after
+--            mem_read_enable='1' for a single cycle.
 -- mem_write - data to write
--- mem_writeMask - set to '1' for those bits that are to be written to memory upon
+-- mem_write_mask - set to '1' for those bits that are to be written to memory upon
 --                 write request
 -- break - set to '1' when CPU hits break instruction
--- interrupt - set to '1' until interrupts are cleared by CPU. 
+-- interrupt - set to '1' until interrupts are cleared by CPU.
 
 
 
 
 entity zpu_core is
+    generic(
+        Generate_Trace      : boolean;
+        trace_file          : string;
+        wordPower           : integer;
+        DontCareValue       : std_logic;
+        maxAddrBitIncIO     : integer;
+        maxAddrBitBRAM      : integer
+    );
   port (
-    clk                 : in  std_logic;
-    reset               : in  std_logic;
-    enable              : in  std_logic;
-    in_mem_busy         : in  std_logic;
-    mem_read            : in  std_logic_vector(wordSize-1 downto 0);
-    mem_write           : out std_logic_vector(wordSize-1 downto 0);
-    out_mem_addr        : out std_logic_vector(maxAddrBitIncIO downto 0);
-    out_mem_writeEnable : out std_logic;
-    out_mem_readEnable  : out std_logic;
-    mem_writeMask       : out std_logic_vector(wordBytes-1 downto 0);
-    interrupt           : in  std_logic;
-    break               : out std_logic
+    clk                     : in  std_logic;
+    reset                   : in  std_logic;
+    enable                  : in  std_logic;
+    mem_ack                 : in  std_logic;
+    mem_read                : in  std_logic_vector(wordSize-1 downto 0);
+    mem_write               : out std_logic_vector(wordSize-1 downto 0);
+    out_mem_addr            : out std_logic_vector(maxAddrBitIncIO downto 0);
+    out_mem_write_enable    : out std_logic;
+    out_mem_read_enable     : out std_logic;
+    mem_write_mask          : out std_logic_vector(wordBytes-1 downto 0);
+    interrupt               : in  std_logic;
+    break                   : out std_logic
     );
 end zpu_core;
 
 
 architecture behave of zpu_core is
+
+
+
 
   type InsnType is (
     Insn_AddTop,
@@ -148,7 +159,7 @@ architecture behave of zpu_core is
     State_BinaryOpResult,
     State_Idle,
     State_Interrupt
-    ); 
+    );
 
 
   signal pc                  : unsigned(maxAddrBitIncIO downto 0);
@@ -167,11 +178,12 @@ architecture behave of zpu_core is
   signal stackB              : unsigned(wordSize-1 downto 0);
   signal idim_flag           : std_logic;
   signal busy                : std_logic;
-  signal mem_writeEnable     : std_logic;
-  signal mem_readEnable      : std_logic;
+  signal mem_write_enable     : std_logic;
+  signal mem_read_enable      : std_logic;
   signal mem_addr            : std_logic_vector(maxAddrBitIncIO downto minAddrBit);
   signal mem_delayAddr       : std_logic_vector(maxAddrBitIncIO downto minAddrBit);
-  signal mem_delayReadEnable : std_logic;
+  signal mem_delayread_enable : std_logic;
+  signal mem_busy             : std_logic;
   --
   signal inInterrupt         : std_logic;
   --
@@ -196,10 +208,12 @@ architecture behave of zpu_core is
   signal trace_topOfStack  : std_logic_vector(wordSize-1 downto 0);
   signal trace_topOfStackB : std_logic_vector(wordSize-1 downto 0);
 
+    constant spStart : std_logic_vector(maxAddrBitIncIO downto 0) :=
+    std_logic_vector(to_unsigned((2**(maxAddrBitBRAM+1))-8, maxAddrBitIncIO+1));
+
 -- state machine.
 
 begin
-
 
   traceFileGenerate :
   if Generate_Trace generate
@@ -217,16 +231,21 @@ begin
   end generate;
 
 
-  -- the memory subsystem will tell us one cycle later whether or 
+  -- the memory subsystem will tell us one cycle later whether or
   -- not it is busy
-  out_mem_writeEnable                             <= mem_writeEnable;
-  out_mem_readEnable                              <= mem_readEnable;
+  out_mem_write_enable                             <= mem_write_enable;
+  out_mem_read_enable                              <= mem_read_enable;
   out_mem_addr(maxAddrBitIncIO downto minAddrBit) <= mem_addr;
   out_mem_addr(minAddrBit-1 downto 0)             <= (others => '0');
+
+  mem_busy <= not mem_ack and mem_read_enable;
+  --mem_busy <= (mem_write_enable and mem_addr(ioBit)) or (mem_read_enable and mem_addr(ioBit));
 
   incSp    <= sp + 1;
   incIncSp <= sp + 2;
   decSp    <= sp - 1;
+
+
 
 
   opcodeControl : process(clk, reset)
@@ -247,11 +266,11 @@ begin
       idim_flag       <= '0';
       begin_inst      <= '0';
       inInterrupt     <= '0';
-      mem_writeEnable <= '0';
-      mem_readEnable  <= '0';
+      mem_write_enable <= '0';
+      mem_read_enable  <= '0';
       multA           <= (others => '0');
       multB           <= (others => '0');
-      mem_writeMask   <= (others => '1');
+      mem_write_mask   <= (others => '1');
     elsif rising_edge(clk) then
       -- we must multiply unconditionally to get pipelined multiplication
       tMultResult := multA * multB;
@@ -268,11 +287,11 @@ begin
 
 
       mem_addr        <= (others => DontCareValue);
-      mem_readEnable  <= '0';
-      mem_writeEnable <= '0';
+      mem_read_enable  <= '0';
+      mem_write_enable <= '0';
       mem_write       <= (others => DontCareValue);
 
-      if (mem_writeEnable = '1') and (mem_readEnable = '1') then
+      if (mem_write_enable = '1') and (mem_read_enable = '1') then
         report "read/write collision" severity failure;
       end if;
 
@@ -302,33 +321,33 @@ begin
           if enable = '1' then
             state <= State_Resync;
           end if;
-          -- Initial state of ZPU, fetch top of stack + first instruction 
+          -- Initial state of ZPU, fetch top of stack + first instruction
 
         when State_Resync =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             mem_addr       <= std_logic_vector(sp);
-            mem_readEnable <= '1';
+            mem_read_enable <= '1';
             state          <= State_Resync2;
           end if;
 
         when State_Resync2 =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             stackA         <= unsigned(mem_read);
             mem_addr       <= std_logic_vector(incSp);
-            mem_readEnable <= '1';
+            mem_read_enable <= '1';
             state          <= State_Resync3;
           end if;
 
         when State_Resync3 =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             stackB         <= unsigned(mem_read);
             mem_addr       <= std_logic_vector(pc(maxAddrBitIncIO downto minAddrBit));
-            mem_readEnable <= '1';
+            mem_read_enable <= '1';
             state          <= State_Decode;
           end if;
 
         when State_Decode =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             decodeWord <= mem_read;
             state      <= State_Decode2;
             -- Do not recurse into ISR while interrupt line is active
@@ -336,7 +355,7 @@ begin
               -- We got an interrupt, execute interrupt instead of next instruction
               inInterrupt                      <= '1';
               sp                               <= decSp;
-              mem_writeEnable                  <= '1';
+              mem_write_enable                  <= '1';
               mem_addr                         <= std_logic_vector(incSp);
               mem_write                        <= std_logic_vector(stackB);
               stackA                           <= (others => DontCareValue);
@@ -345,12 +364,12 @@ begin
               pc                               <= to_unsigned(32, maxAddrBitIncIO+1);
               state                            <= State_Interrupt;
             end if; -- interrupt
-          end if; -- in_mem_busy
+          end if; -- mem_busy
 
         when State_Interrupt =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             mem_addr       <= std_logic_vector(pc(maxAddrBitIncIO downto minAddrBit));
-            mem_readEnable <= '1';
+            mem_read_enable <= '1';
             state          <= State_Decode;
             report "ZPU jumped to interrupt!" severity note;
           end if;
@@ -451,7 +470,7 @@ begin
               end case; -- tOpcode(3 downto 0)
             end if; -- tOpcode
             tDecodedOpcode(i) := tNextInsn;
-            
+
           end loop; -- 0 to wordBytes-1
 
           insn <= tDecodedOpcode(to_integer(pc(byteBits-1 downto 0)));
@@ -470,7 +489,7 @@ begin
           -- 2. increase PC if applicable
           -- 3. set next state if appliable
           -- 4. do it's operation
-          
+
         when State_Execute =>
           insn <= decodedOpcode(to_integer(nextPC(byteBits-1 downto 0)));
 
@@ -480,7 +499,7 @@ begin
               state <= State_Fetch;
 
             when Insn_Im =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '1';
                 pc         <= pc + 1;
@@ -489,7 +508,7 @@ begin
                   stackA(wordSize-1 downto 7) <= stackA(wordSize-8 downto 0);
                   stackA(6 downto 0)          <= unsigned(opcode(to_integer(pc(byteBits-1 downto 0)))(6 downto 0));
                 else
-                  mem_writeEnable <= '1';
+                  mem_write_enable <= '1';
                   mem_addr        <= std_logic_vector(incSp);
                   mem_write       <= std_logic_vector(stackB);
                   stackB          <= stackA;
@@ -499,40 +518,40 @@ begin
                   end loop;
                   stackA(6 downto 0) <= unsigned(opcode(to_integer(pc(byteBits-1 downto 0)))(6 downto 0));
                 end if; -- idim_flag
-              end if; -- in_mem_busy
+              end if; -- mem_busy
 
             when Insn_StoreSP =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
                 state      <= State_StoreSP2;
 
-                mem_writeEnable <= '1';
+                mem_write_enable <= '1';
                 mem_addr        <= std_logic_vector(sp+spOffset);
                 mem_write       <= std_logic_vector(stackA);
                 stackA          <= stackB;
                 sp              <= incSp;
               end if;
 
-              
+
             when Insn_LoadSP =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
                 state      <= State_LoadSP2;
 
                 sp              <= decSp;
-                mem_writeEnable <= '1';
+                mem_write_enable <= '1';
                 mem_addr        <= std_logic_vector(incSp);
                 mem_write       <= std_logic_vector(stackB);
               end if;
 
             when Insn_Emulate =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst                       <= '1';
                 idim_flag                        <= '0';
                 sp                               <= decSp;
-                mem_writeEnable                  <= '1';
+                mem_write_enable                  <= '1';
                 mem_addr                         <= std_logic_vector(incSp);
                 mem_write                        <= std_logic_vector(stackB);
                 stackA                           <= (others => DontCareValue);
@@ -545,10 +564,10 @@ begin
                 pc             <= (others => '0');
                 pc(9 downto 5) <= unsigned(opcode(to_integer(pc(byteBits-1 downto 0)))(4 downto 0));
                 state          <= State_Fetch;
-              end if; -- in_mem_busy
+              end if; -- mem_busy
 
             when Insn_CallPCrel =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst                       <= '1';
                 idim_flag                        <= '0';
                 stackA                           <= (others => DontCareValue);
@@ -559,7 +578,7 @@ begin
               end if;
 
             when Insn_Call =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst                       <= '1';
                 idim_flag                        <= '0';
                 stackA                           <= (others => DontCareValue);
@@ -569,17 +588,17 @@ begin
               end if;
 
             when Insn_AddSP =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
                 state      <= State_AddSP2;
 
-                mem_readEnable <= '1';
+                mem_read_enable <= '1';
                 mem_addr       <= std_logic_vector(sp+spOffset);
               end if;
 
             when Insn_PushSP =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
                 pc         <= pc + 1;
@@ -588,51 +607,51 @@ begin
                 stackA                                    <= (others => '0');
                 stackA(maxAddrBitIncIO downto minAddrBit) <= sp;
                 stackB                                    <= stackA;
-                mem_writeEnable                           <= '1';
+                mem_write_enable                           <= '1';
                 mem_addr                                  <= std_logic_vector(incSp);
                 mem_write                                 <= std_logic_vector(stackB);
               end if;
 
             when Insn_PopPC =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
                 pc         <= stackA(maxAddrBitIncIO downto 0);
                 sp         <= incSp;
 
-                mem_writeEnable <= '1';
+                mem_write_enable <= '1';
                 mem_addr        <= std_logic_vector(incSp);
                 mem_write       <= std_logic_vector(stackB);
                 state           <= State_Resync;
               end if;
 
             when Insn_PopPCrel =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
                 pc         <= stackA(maxAddrBitIncIO downto 0) + pc;
                 sp         <= incSp;
 
-                mem_writeEnable <= '1';
+                mem_write_enable <= '1';
                 mem_addr        <= std_logic_vector(incSp);
                 mem_write       <= std_logic_vector(stackB);
                 state           <= State_Resync;
               end if;
 
             when Insn_Add =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
                 stackA     <= stackA + stackB;
 
-                mem_readEnable <= '1';
+                mem_read_enable <= '1';
                 mem_addr       <= std_logic_vector(incIncSp);
                 sp             <= incSp;
                 state          <= State_Popped;
               end if;
 
             when Insn_Sub =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst     <= '1';
                 idim_flag      <= '0';
                 binaryOpResult <= stackB - stackA;
@@ -640,52 +659,52 @@ begin
               end if;
 
             when Insn_Pop =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst     <= '1';
                 idim_flag      <= '0';
                 mem_addr       <= std_logic_vector(incIncSp);
-                mem_readEnable <= '1';
+                mem_read_enable <= '1';
                 sp             <= incSp;
                 stackA         <= stackB;
                 state          <= State_Popped;
               end if;
 
             when Insn_PopDown =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                                         -- PopDown leaves top of stack unchanged
                 begin_inst     <= '1';
                 idim_flag      <= '0';
                 mem_addr       <= std_logic_vector(incIncSp);
-                mem_readEnable <= '1';
+                mem_read_enable <= '1';
                 sp             <= incSp;
                 state          <= State_Popped;
               end if;
 
             when Insn_Or =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst     <= '1';
                 idim_flag      <= '0';
                 stackA         <= stackA or stackB;
-                mem_readEnable <= '1';
+                mem_read_enable <= '1';
                 mem_addr       <= std_logic_vector(incIncSp);
                 sp             <= incSp;
                 state          <= State_Popped;
               end if;
 
             when Insn_And =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
 
                 stackA         <= stackA and stackB;
-                mem_readEnable <= '1';
+                mem_read_enable <= '1';
                 mem_addr       <= std_logic_vector(incIncSp);
                 sp             <= incSp;
                 state          <= State_Popped;
               end if;
 
             when Insn_Eq =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
 
@@ -697,7 +716,7 @@ begin
               end if;
 
             when Insn_Ulessthan =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
 
@@ -709,7 +728,7 @@ begin
               end if;
 
             when Insn_Ulessthanorequal =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
 
@@ -721,7 +740,7 @@ begin
               end if;
 
             when Insn_Lessthan =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
 
@@ -733,7 +752,7 @@ begin
               end if;
 
             when Insn_Lessthanorequal =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
 
@@ -745,17 +764,17 @@ begin
               end if;
 
             when Insn_Load =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
                 state      <= State_Load2;
 
                 mem_addr       <= std_logic_vector(stackA(maxAddrBitIncIO downto minAddrBit));
-                mem_readEnable <= '1';
+                mem_read_enable <= '1';
               end if;
 
             when Insn_Dup =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
                 pc         <= pc + 1;
@@ -764,11 +783,11 @@ begin
                 stackB          <= stackA;
                 mem_write       <= std_logic_vector(stackB);
                 mem_addr        <= std_logic_vector(incSp);
-                mem_writeEnable <= '1';
+                mem_write_enable <= '1';
               end if;
 
             when Insn_DupStackB =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
                 pc         <= pc + 1;
@@ -778,30 +797,30 @@ begin
                 stackB          <= stackA;
                 mem_write       <= std_logic_vector(stackB);
                 mem_addr        <= std_logic_vector(incSp);
-                mem_writeEnable <= '1';
+                mem_write_enable <= '1';
               end if;
 
             when Insn_Store =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst      <= '1';
                 idim_flag       <= '0';
                 pc              <= pc + 1;
                 mem_addr        <= std_logic_vector(stackA(maxAddrBitIncIO downto minAddrBit));
                 mem_write       <= std_logic_vector(stackB);
-                mem_writeEnable <= '1';
+                mem_write_enable <= '1';
                 sp              <= incIncSp;
                 state           <= State_Resync;
               end if;
 
             when Insn_PopSP =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
                 pc         <= pc + 1;
 
                 mem_write       <= std_logic_vector(stackB);
                 mem_addr        <= std_logic_vector(incSp);
-                mem_writeEnable <= '1';
+                mem_write_enable <= '1';
                 sp              <= stackA(maxAddrBitIncIO downto minAddrBit);
                 state           <= State_Resync;
               end if;
@@ -860,7 +879,7 @@ begin
               else
                 pc <= pc + 1;
               end if;
-              -- need to fetch stack again.                           
+              -- need to fetch stack again.
               state <= State_Resync;
 
             when Insn_Mult =>
@@ -876,25 +895,25 @@ begin
               break <= '1';
 
             when Insn_Loadb =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
                 state      <= State_Loadb2;
 
                 mem_addr       <= std_logic_vector(stackA(maxAddrBitIncIO downto minAddrBit));
-                mem_readEnable <= '1';
+                mem_read_enable <= '1';
               end if;
 
             when Insn_Storeb =>
-              if in_mem_busy = '0' then
+              if mem_busy = '0' then
                 begin_inst <= '1';
                 idim_flag  <= '0';
                 state      <= State_Storeb2;
 
                 mem_addr       <= std_logic_vector(stackA(maxAddrBitIncIO downto minAddrBit));
-                mem_readEnable <= '1';
+                mem_read_enable <= '1';
               end if;
-              
+
             when others =>
               sp    <= (others => DontCareValue);
               report "Illegal instruction" severity failure;
@@ -904,21 +923,21 @@ begin
 
 
         when State_StoreSP2 =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             mem_addr       <= std_logic_vector(incSp);
-            mem_readEnable <= '1';
+            mem_read_enable <= '1';
             state          <= State_Popped;
           end if;
 
         when State_LoadSP2 =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             state          <= State_LoadSP3;
-            mem_readEnable <= '1';
+            mem_read_enable <= '1';
             mem_addr       <= std_logic_vector(sp+spOffset+1);
           end if;
 
         when State_LoadSP3 =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             pc     <= pc + 1;
             state  <= State_Execute;
             stackB <= stackA;
@@ -926,21 +945,21 @@ begin
           end if;
 
         when State_AddSP2 =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             pc     <= pc + 1;
             state  <= State_Execute;
             stackA <= stackA + unsigned(mem_read);
           end if;
 
         when State_Load2 =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             stackA <= unsigned(mem_read);
             pc     <= pc + 1;
             state  <= State_Execute;
           end if;
 
         when State_Loadb2 =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             stackA             <= (others => '0');
             stackA(7 downto 0) <= unsigned(mem_read(((wordBytes-1-to_integer(stackA(byteBits-1 downto 0)))*8+7) downto (wordBytes-1-to_integer(stackA(byteBits-1 downto 0)))*8));
             pc                 <= pc + 1;
@@ -948,20 +967,20 @@ begin
           end if;
 
         when State_Storeb2 =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             mem_addr                                                                                                                              <= std_logic_vector(stackA(maxAddrBitIncIO downto minAddrBit));
             mem_write                                                                                                                             <= mem_read;
             mem_write(((wordBytes-1-to_integer(stackA(byteBits-1 downto 0)))*8+7) downto (wordBytes-1-to_integer(stackA(byteBits-1 downto 0)))*8) <= std_logic_vector(stackB(7 downto 0));
-            mem_writeEnable                                                                                                                       <= '1';
+            mem_write_enable                                                                                                                       <= '1';
             pc                                                                                                                                    <= pc + 1;
             sp                                                                                                                                    <= incIncSp;
             state                                                                                                                                 <= State_Resync;
           end if;
 
         when State_Fetch =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             mem_addr       <= std_logic_vector(pc(maxAddrBitIncIO downto minAddrBit));
-            mem_readEnable <= '1';
+            mem_read_enable <= '1';
             state          <= State_Decode;
           end if;
 
@@ -975,9 +994,9 @@ begin
           state <= State_Mult5;
 
         when State_Mult5 =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             stackA         <= multResult3;
-            mem_readEnable <= '1';
+            mem_read_enable <= '1';
             mem_addr       <= std_logic_vector(incIncSp);
             sp             <= incSp;
             state          <= State_Popped;
@@ -987,14 +1006,14 @@ begin
           state <= State_BinaryOpResult2;
 
         when State_BinaryOpResult2 =>
-          mem_readEnable <= '1';
+          mem_read_enable <= '1';
           mem_addr       <= std_logic_vector(incIncSp);
           sp             <= incSp;
           stackA         <= binaryOpResult2;
           state          <= State_Popped;
 
         when State_Popped =>
-          if in_mem_busy = '0' then
+          if mem_busy = '0' then
             pc     <= pc + 1;
             stackB <= unsigned(mem_read);
             state  <= State_Execute;
