@@ -190,22 +190,22 @@ package zpupkg is
    constant OPCODE_EMULATE   : unsigned(7 downto 5):="001";
    constant OPCODE_ADDSP     : unsigned(7 downto 4):="0001";
    constant OPCODE_SHORT     : unsigned(7 downto 4):="0000";
-   
+
    constant OPCODE_BREAK     : unsigned(3 downto 0):="0000";
    constant OPCODE_SHIFTLEFT : unsigned(3 downto 0):="0001";
    constant OPCODE_PUSHSP    : unsigned(3 downto 0):="0010";
    constant OPCODE_PUSHINT   : unsigned(3 downto 0):="0011";
-   
+
    constant OPCODE_POPPC     : unsigned(3 downto 0):="0100";
    constant OPCODE_ADD       : unsigned(3 downto 0):="0101";
    constant OPCODE_AND       : unsigned(3 downto 0):="0110";
    constant OPCODE_OR        : unsigned(3 downto 0):="0111";
-   
+
    constant OPCODE_LOAD      : unsigned(3 downto 0):="1000";
    constant OPCODE_NOT       : unsigned(3 downto 0):="1001";
    constant OPCODE_FLIP      : unsigned(3 downto 0):="1010";
    constant OPCODE_NOP       : unsigned(3 downto 0):="1011";
-   
+
    constant OPCODE_STORE     : unsigned(3 downto 0):="1100";
    constant OPCODE_POPSP     : unsigned(3 downto 0):="1101";
    constant OPCODE_COMPARE   : unsigned(3 downto 0):="1110";
@@ -248,45 +248,45 @@ package zpupkg is
    constant OPCODE_CONFIG           : unsigned(5 downto 0):=to_unsigned(58,6);
    constant OPCODE_PUSHPC           : unsigned(5 downto 0):=to_unsigned(59,6);
 end package zpupkg;
-
-library IEEE;
-use IEEE.std_logic_1164.all;
-use IEEE.numeric_std.all;
-
-package UART is
-   ----------------------
-   -- Very simple UART --
-   ----------------------
-   component RxUnit is
-      port(
-         clk_i    : in  std_logic;  -- System clock signal
-         reset_i  : in  std_logic;  -- Reset input (sync)
-         enable_i : in  std_logic;  -- Enable input (rate*4)
-         read_i   : in  std_logic;  -- Received Byte Read
-         rxd_i    : in  std_logic;  -- RS-232 data input
-         rxav_o   : out std_logic;  -- Byte available
-         datao_o  : out std_logic_vector(7 downto 0)); -- Byte received
-   end component RxUnit;
-
-   component TxUnit is
-     port (
-        clk_i    : in  std_logic;  -- Clock signal
-        reset_i  : in  std_logic;  -- Reset input
-        enable_i : in  std_logic;  -- Enable input
-        load_i   : in  std_logic;  -- Load input
-        txd_o    : out std_logic;  -- RS-232 data output
-        busy_o   : out std_logic;  -- Tx Busy
-        datai_i  : in  std_logic_vector(7 downto 0)); -- Byte to transmit
-   end component TxUnit;
-
-   component BRGen is
-     generic(
-        COUNT : integer range 0 to 65535);-- Count revolution
-     port (
-        clk_i   : in  std_logic;  -- Clock
-        reset_i : in  std_logic;  -- Reset input
-        ce_i    : in  std_logic;  -- Chip Enable
-        o_o     : out std_logic); -- Output
-   end component BRGen;
-end package UART;
+--
+--library IEEE;
+--use IEEE.std_logic_1164.all;
+--use IEEE.numeric_std.all;
+--
+--package UART is
+--   ----------------------
+--   -- Very simple UART --
+--   ----------------------
+--   component RxUnit is
+--      port(
+--         clk_i    : in  std_logic;  -- System clock signal
+--         reset_i  : in  std_logic;  -- Reset input (sync)
+--         enable_i : in  std_logic;  -- Enable input (rate*4)
+--         read_i   : in  std_logic;  -- Received Byte Read
+--         rxd_i    : in  std_logic;  -- RS-232 data input
+--         rxav_o   : out std_logic;  -- Byte available
+--         datao_o  : out std_logic_vector(7 downto 0)); -- Byte received
+--   end component RxUnit;
+--
+--   component TxUnit is
+--     port (
+--        clk_i    : in  std_logic;  -- Clock signal
+--        reset_i  : in  std_logic;  -- Reset input
+--        enable_i : in  std_logic;  -- Enable input
+--        load_i   : in  std_logic;  -- Load input
+--        txd_o    : out std_logic;  -- RS-232 data output
+--        busy_o   : out std_logic;  -- Tx Busy
+--        datai_i  : in  std_logic_vector(7 downto 0)); -- Byte to transmit
+--   end component TxUnit;
+--
+--   component BRGen is
+--     generic(
+--        COUNT : integer range 0 to 65535);-- Count revolution
+--     port (
+--        clk_i   : in  std_logic;  -- Clock
+--        reset_i : in  std_logic;  -- Reset input
+--        ce_i    : in  std_logic;  -- Chip Enable
+--        o_o     : out std_logic); -- Output
+--   end component BRGen;
+--end package UART;
 

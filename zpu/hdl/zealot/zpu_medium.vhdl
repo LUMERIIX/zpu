@@ -12,14 +12,14 @@
 ----  -                                                                   ----
 ----                                                                      ----
 ----  Author:                                                             ----
-----    - Øyvind Harboe, oyvind.harboe zylin.com                          ----
+----    - Oyvind Harboe, oyvind.harboe zylin.com                          ----
 ----    - Salvador E. Tropea, salvador inti.gob.ar                        ----
 ----                                                                      ----
 ------------------------------------------------------------------------------
 ----                                                                      ----
----- Copyright (c) 2008 Øyvind Harboe <oyvind.harboe zylin.com>           ----
+---- Copyright (c) 2008 Oyvind Harboe <oyvind.harboe zylin.com>           ----
 ---- Copyright (c) 2008 Salvador E. Tropea <salvador inti.gob.ar>         ----
----- Copyright (c) 2008 Instituto Nacional de Tecnología Industrial       ----
+---- Copyright (c) 2008 Instituto Nacional de TecnologÃ­a Industrial       ----
 ----                                                                      ----
 ---- Distributed under the BSD license                                    ----
 ----                                                                      ----
@@ -61,8 +61,8 @@ library IEEE;
 use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
 
-library zpu;
-use zpu.zpupkg.all;
+library work;
+use work.zpupkg.all;
 
 entity ZPUMediumCore is
    generic(
@@ -172,7 +172,7 @@ architecture Behave of ZPUMediumCore is
                    st_fetch, st_execute, st_decode, st_decode2, st_resync,
                    st_store_sp2, st_resync2, st_resync3, st_loadb2, st_storeb2,
                    st_mult2, st_mult3, st_mult5, st_mult4, st_binary_op_res2,
-                   st_binary_op_res, st_idle); 
+                   st_binary_op_res, st_idle);
    signal state : state_t:=st_resync;
 
    -- Go to st_fetch state or just do its work
@@ -312,14 +312,14 @@ begin
             if BINOP_PIPE=2 then
                bin_op_res2_r <= bin_op_res1_r; -- pipeline a bit.
             end if;
-   
+
             read_en_r  <='0';
             write_en_r <='0';
             -- Allow synthesis tools to load bogus values when we don't
             -- care about the address and output data.
-            addr_r     <= (others => D_CARE_VAL);
+            --addr_r     <= (others => D_CARE_VAL);
             data_o     <= (others => D_CARE_VAL);
-   
+
             if (write_en_r='1') and (read_en_r='1') then
                report "read/write collision" severity failure;
             end if;
@@ -328,7 +328,7 @@ begin
             sp_offset(4):=not opcode_r(ipc_low)(4);
             sp_offset(3 downto 0):=opcode_r(ipc_low)(3 downto 0);
             next_pc:=pc_r+1;
-   
+
             -- Prepare trace snapshot
             dbg_o.opcode <= opcode_r(ipc_low);
             dbg_o.pc     <= resize(pc_r,32);
@@ -337,7 +337,7 @@ begin
             dbg_o.b_inst <= '0';
             dbg_o.sp     <= (others => '0');
             dbg_o.sp(ADDR_W-1 downto BYTE_BITS) <= sp_r;
-   
+
             case state is
                  when st_idle =>
                       if enable_i='1' then
@@ -472,7 +472,7 @@ begin
                           end if;
                           tinsns(i):=tdecoded;
                       end loop;
-                      
+
                       insn <= tinsns(ipc_low);
                       -- once we wrap, we need to fetch
                       tinsns(0):=dec_insn_fetch;
