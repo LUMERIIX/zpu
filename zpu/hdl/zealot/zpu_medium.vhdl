@@ -277,8 +277,8 @@ begin
       variable mult_res    : unsigned(WORD_SIZE*2-1 downto 0);
       variable ipc_low     : integer range 0 to 3; -- Address inside a word (pc_r)
       variable inpc_low    : integer range 0 to 3; -- Address inside a word (next_pc)
-      variable h_bit       : integer;
-      variable l_bit       : integer;
+      variable h_bit       : integer range 0 to 31;
+      variable l_bit       : integer range 0 to 24;
       variable not_lshr    : std_logic:='1';
    begin
       if rising_edge(clk_i) then
@@ -869,7 +869,7 @@ begin
                          -- Select the source bits using the less significant bits (byte address)
                          h_bit:=(WORD_BYTES-to_integer(a_r(BYTE_BITS-1 downto 0)))*8-1;
                          l_bit:=h_bit-7;
-                         a_r(7 downto 0) <= data_i(h_bit downto l_bit);
+                         a_r(7 downto 0) <= data_i((WORD_BYTES-to_integer(a_r(BYTE_BITS-1 downto 0)))*8-1 downto (WORD_BYTES-to_integer(a_r(BYTE_BITS-1 downto 0)))*8-8);
                          state <= st_execute;
                       end if;
                  when st_storeb2 =>

@@ -34,50 +34,57 @@
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.STD_LOGIC_UNSIGNED.ALL;
+use IEEE.NUMERIC_STD.ALL;
 
-library work;
-use work.phi_config.all;
-use work.wishbone_pkg.all;
-use work.zpupkg.all;
-use work.zpu_config.all;
+--library work;
+--use work.zpupkg.all;
+--use work.zpu_config.all;
 
 entity zpu_wb_bridge is
-	port (	-- Native ZPU interface
- 			clk 				: in std_logic;
-	 		areset 				: in std_logic;
+    generic(
+        wordSize        : natural;
+        maxAddrBitIncIO : natural;
+        wordBytes       : natural
+    );
+    port (    -- Native ZPU interface
+        clk_i                  : in  std_logic;
+        rst_i                  : in  std_logic;
 
-	 		mem_req 			: in std_logic;
-	 		mem_we				: in std_logic;
-	 		mem_ack				: out std_logic; 
-	 		mem_read 			: out std_logic_vector(wordSize-1 downto 0);
-	 		mem_write 			: in std_logic_vector(wordSize-1 downto 0);
-			out_mem_addr 		: in std_logic_vector(maxAddrBitIncIO downto 0);
-	 		mem_writeMask		: in std_logic_vector(wordBytes-1 downto 0);
-			
-			-- Wishbone from ZPU
-			zpu_wb_i			: in wishbone_bus_out;
-			zpu_wb_o			: out wishbone_bus_in);
+        mem_req                : in  std_logic;
+        mem_we                 : in  std_logic;
+        mem_ack                : out std_logic;
+        mem_read               : out std_logic_vector(wordSize-1 downto 0);
+        mem_write              : in  std_logic_vector(wordSize-1 downto 0);
+        out_mem_addr           : in  std_logic_vector(maxAddrBitIncIO downto 0);
+        mem_write_mask          : in  std_logic_vector(wordBytes-1 downto 0);
 
+        -- Wishbone from ZPU
+        adr_o                  : out std_logic_vector(maxAddrBitIncIO-1 downto 0);
+        sel_o                  : out std_logic_vector(wordBytes-1 downto 0);
+        dat_o                  : out std_logic_vector(wordSize-1 downto 0);
+        dat_i                  : in  std_logic_vector(wordSize-1 downto 0);
+        cyc_o                  : out std_logic;
+        stb_o                  : out std_logic;
+        we_o                   : out std_logic;
+        ack_i                  : in  std_logic
+    );
 end zpu_wb_bridge;
 
 architecture behave of zpu_wb_bridge is
 
 begin
 
-	mem_read <= zpu_wb_i.dat;
-	mem_ack <= zpu_wb_i.ack;
-	
-	zpu_wb_o.adr <= "000000" & out_mem_addr(27) & out_mem_addr(24 downto 0);
-	zpu_wb_o.dat <= mem_write;
-	zpu_wb_o.sel <= mem_writeMask;
-	zpu_wb_o.stb <= mem_req;
-	zpu_wb_o.cyc <= mem_req;
-	zpu_wb_o.we <= mem_we;
+    mem_read <= dat_i;
+    mem_ack <= ack_i;
+
+    adr_o <= out_mem_addr(maxAddrBitIncIO-1 downto 0);--"000000" & out_mem_addr(27) & out_mem_addr(24 downto 0);
+    dat_o <= mem_write;
+    sel_o <= mem_write_mask;
+    stb_o <= mem_req and out_mem_addr(out_mem_addr'left);
+    cyc_o <= mem_req and out_mem_addr(out_mem_addr'left);
+    we_o <= mem_we;
+
+
+
 
 end behave;
-
-			
-
-	
-
